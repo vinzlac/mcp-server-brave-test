@@ -61,6 +61,135 @@ server.tool(
   }
 );
 
+// Register weather tool
+server.tool(
+  "weather",
+  "Get weather forecast from OpenWeatherMap",
+  {
+    city: z.string().describe("City name"),
+    postalCode: z.string().optional().describe("Postal code (optional)")
+  },
+  async ({ city, postalCode }) => {
+    try {
+      console.error(`[Weather Tool] Starting weather request for ${city}${postalCode ? `, ${postalCode}` : ''}`);
+      console.error(`[Weather Tool] Using API Key: ${process.env.OPENWEATHER_API_KEY?.substring(0, 5)}...`);
+
+      // Get current weather
+      const currentWeatherUrl = `https://api.openweathermap.org/data/2.5/weather?q=${city},fr&units=metric&lang=fr&appid=${process.env.OPENWEATHER_API_KEY}`;
+      console.error(`[Weather Tool] Calling current weather API: ${currentWeatherUrl}`);
+      
+      const currentResponse = await axios.get(currentWeatherUrl);
+      console.error(`[Weather Tool] Current weather response status: ${currentResponse.status}`);
+      console.error(`[Weather Tool] Current weather data:`, JSON.stringify(currentResponse.data, null, 2));
+      
+      const currentData = currentResponse.data;
+
+      // Get 5-day forecast
+      const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${city},fr&units=metric&lang=fr&appid=${process.env.OPENWEATHER_API_KEY}`;
+      console.error(`[Weather Tool] Calling forecast API: ${forecastUrl}`);
+      
+      const forecastResponse = await axios.get(forecastUrl);
+      console.error(`[Weather Tool] Forecast response status: ${forecastResponse.status}`);
+      console.error(`[Weather Tool] Forecast data:`, JSON.stringify(forecastResponse.data, null, 2));
+      
+      const forecastData = forecastResponse.data;
+
+      // Format the response
+      const weatherData = {
+        current: {
+          temperature: `${Math.round(currentData.main.temp)}°C`,
+          description: currentData.weather[0].description,
+          humidity: `${currentData.main.humidity}%`,
+          wind: `${Math.round(currentData.wind.speed * 3.6)} km/h`
+        },
+        forecast: {
+          today: {
+            morning: {
+              temperature: `${Math.round(forecastData.list[0].main.temp)}°C`,
+              description: forecastData.list[0].weather[0].description
+            },
+            afternoon: {
+              temperature: `${Math.round(forecastData.list[2].main.temp)}°C`,
+              description: forecastData.list[2].weather[0].description
+            },
+            evening: {
+              temperature: `${Math.round(forecastData.list[4].main.temp)}°C`,
+              description: forecastData.list[4].weather[0].description
+            },
+            night: {
+              temperature: `${Math.round(forecastData.list[6].main.temp)}°C`,
+              description: forecastData.list[6].weather[0].description
+            }
+          },
+          tomorrow: {
+            morning: {
+              temperature: `${Math.round(forecastData.list[8].main.temp)}°C`,
+              description: forecastData.list[8].weather[0].description
+            },
+            afternoon: {
+              temperature: `${Math.round(forecastData.list[10].main.temp)}°C`,
+              description: forecastData.list[10].weather[0].description
+            }
+          }
+        }
+      };
+
+      console.error(`[Weather Tool] Formatted weather data:`, JSON.stringify(weatherData, null, 2));
+
+      // Format the response in a more readable way
+      const formattedResponse = `
+Météo actuelle à ${city} :
+- Température : ${weatherData.current.temperature}
+- Description : ${weatherData.current.description}
+- Humidité : ${weatherData.current.humidity}
+- Vent : ${weatherData.current.wind}
+
+Prévisions pour aujourd'hui :
+- Matin : ${weatherData.forecast.today.morning.temperature} (${weatherData.forecast.today.morning.description})
+- Après-midi : ${weatherData.forecast.today.afternoon.temperature} (${weatherData.forecast.today.afternoon.description})
+- Soir : ${weatherData.forecast.today.evening.temperature} (${weatherData.forecast.today.evening.description})
+- Nuit : ${weatherData.forecast.today.night.temperature} (${weatherData.forecast.today.night.description})
+
+Prévisions pour demain :
+- Matin : ${weatherData.forecast.tomorrow.morning.temperature} (${weatherData.forecast.tomorrow.morning.description})
+- Après-midi : ${weatherData.forecast.tomorrow.afternoon.temperature} (${weatherData.forecast.tomorrow.afternoon.description})
+`;
+
+      console.error(`[Weather Tool] Final formatted response:`, formattedResponse);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: formattedResponse
+          }
+        ]
+      };
+    } catch (error: any) {
+      console.error(`[Weather Tool] Error occurred:`, error);
+      console.error(`[Weather Tool] Error details:`, {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+
+      // If API fails, fallback to search
+      console.error(`[Weather Tool] Falling back to search...`);
+      const searchResults = await braveSearch.search(`météo ${city} ${postalCode} aujourd'hui`);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Je ne peux pas accéder aux données météorologiques en temps réel pour ${city}. Voici les liens vers les prévisions météo :\n\n${
+              searchResults.map((result: any) => `- ${result.title}\n  ${result.url}`).join('\n')
+            }`
+          }
+        ]
+      };
+    }
+  }
+);
+
 // Register chat tool
 server.tool(
   "chat",

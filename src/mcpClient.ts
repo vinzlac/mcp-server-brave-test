@@ -71,6 +71,32 @@ class MCPClient {
     }
   }
 
+  private isWeatherQuery(query: string): boolean {
+    const weatherKeywords = [
+      'météo', 'temps', 'prévisions', 'température', 'pluie', 'soleil',
+      'neige', 'vent', 'humidité', 'climat', 'weather', 'forecast'
+    ];
+    return weatherKeywords.some(keyword => 
+      query.toLowerCase().includes(keyword.toLowerCase())
+    );
+  }
+
+  private extractCityAndPostalCode(query: string): { city: string; postalCode: string } | null {
+    // Simple extraction for now - can be improved with NLP
+    const cityMatch = query.match(/(?:à|de|pour|sur|a|en)\s+([a-zA-ZÀ-ÿ\s]+)/i);
+    if (cityMatch) {
+      const city = cityMatch[1].trim();
+      // Default postal code for Chelles
+      if (city.toLowerCase() === 'chelles') {
+        return { city: 'chelles', postalCode: '77500' };
+      }
+      // For other cities, use the city name without postal code
+      // OpenWeatherMap can handle city names without postal codes
+      return { city: city, postalCode: '' };
+    }
+    return null;
+  }
+
   async processQuery(query: string) {
     const messages: MessageParam[] = [
       {
@@ -79,7 +105,27 @@ class MCPClient {
       },
     ];
 
-    // Initial Claude API call
+    // Check if it's a weather query
+    if (this.isWeatherQuery(query)) {
+      const location = this.extractCityAndPostalCode(query);
+      if (location) {
+        try {
+          console.error(`[Client] Calling weather tool for ${location.city}`);
+          const result = await this.mcp.callTool({
+            name: "weather",
+            arguments: location
+          });
+          console.error(`[Client] Weather tool response:`, result);
+          if (result.content && Array.isArray(result.content) && result.content.length > 0) {
+            return result.content[0].text;
+          }
+        } catch (error) {
+          console.error("[Client] Error calling weather tool:", error);
+        }
+      }
+    }
+
+    // If not a weather query or weather tool failed, proceed with Claude
     const response = await this.anthropic.messages.create({
       model: "claude-3-5-sonnet-20241022",
       max_tokens: 1000,
@@ -99,14 +145,18 @@ class MCPClient {
         const toolName = content.name;
         const toolArgs = content.input as { [x: string]: unknown } | undefined;
 
+        console.error(`[Client] Calling tool ${toolName} with args:`, toolArgs);
         const result = await this.mcp.callTool({
           name: toolName,
           arguments: toolArgs,
         });
+        console.error(`[Client] Tool ${toolName} response:`, result);
+        
         toolResults.push(result);
-        finalText.push(
-          `[Calling tool ${toolName} with args ${JSON.stringify(toolArgs)}]`,
-        );
+        
+        if (result.content && Array.isArray(result.content) && result.content.length > 0) {
+          finalText.push(result.content[0].text);
+        }
 
         // Continue conversation with tool results
         messages.push({
@@ -121,9 +171,9 @@ class MCPClient {
           messages,
         });
 
-        finalText.push(
-          response.content[0].type === "text" ? response.content[0].text : "",
-        );
+        if (response.content[0].type === "text") {
+          finalText.push(response.content[0].text);
+        }
       }
     }
 
