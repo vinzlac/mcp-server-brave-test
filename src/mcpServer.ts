@@ -1,7 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Anthropic } from '@anthropic-ai/sdk';
-import axios from 'axios';
 import dotenv from 'dotenv';
 import { z } from "zod";
 
@@ -15,17 +14,17 @@ const anthropic = new Anthropic({
 // Initialize Brave Search client
 const braveSearch = {
   search: async (query: string) => {
-    const response = await axios.get('https://api.search.brave.com/res/v1/web/search', {
+    const response = await fetch('https://api.search.brave.com/res/v1/web/search?' + new URLSearchParams({
+      q: query,
+      count: '5'
+    }), {
       headers: {
         'Accept': 'application/json',
-        'X-Subscription-Token': process.env.BRAVE_SEARCH_API_KEY
-      },
-      params: {
-        q: query,
-        count: 5
+        'X-Subscription-Token': process.env.BRAVE_SEARCH_API_KEY || ''
       }
     });
-    return response.data.web.results;
+    const data = await response.json();
+    return data.web.results;
   }
 };
 
@@ -78,21 +77,19 @@ server.tool(
       const currentWeatherUrl = `https://api.openweathermap.org/data/2.5/weather?q=${city},fr&units=metric&lang=fr&appid=${process.env.OPENWEATHER_API_KEY}`;
       console.error(`[Weather Tool] Calling current weather API: ${currentWeatherUrl}`);
       
-      const currentResponse = await axios.get(currentWeatherUrl);
+      const currentResponse = await fetch(currentWeatherUrl);
       console.error(`[Weather Tool] Current weather response status: ${currentResponse.status}`);
-      console.error(`[Weather Tool] Current weather data:`, JSON.stringify(currentResponse.data, null, 2));
-      
-      const currentData = currentResponse.data;
+      const currentData = await currentResponse.json();
+      console.error(`[Weather Tool] Current weather data:`, JSON.stringify(currentData, null, 2));
 
       // Get 5-day forecast
       const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${city},fr&units=metric&lang=fr&appid=${process.env.OPENWEATHER_API_KEY}`;
       console.error(`[Weather Tool] Calling forecast API: ${forecastUrl}`);
       
-      const forecastResponse = await axios.get(forecastUrl);
+      const forecastResponse = await fetch(forecastUrl);
       console.error(`[Weather Tool] Forecast response status: ${forecastResponse.status}`);
-      console.error(`[Weather Tool] Forecast data:`, JSON.stringify(forecastResponse.data, null, 2));
-      
-      const forecastData = forecastResponse.data;
+      const forecastData = await forecastResponse.json();
+      console.error(`[Weather Tool] Forecast data:`, JSON.stringify(forecastData, null, 2));
 
       // Format the response
       const weatherData = {
